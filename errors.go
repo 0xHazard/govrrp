@@ -18,6 +18,7 @@ import "errors"
 
 var (
 	errNilHeader       = errors.New("VRRP header can't be empty")
+	errNilPseudoHdr    = errors.New("pseudo-header is empty")
 	errShortHeader     = errors.New("VRRP header is too short")
 	errBadChecksum     = errors.New("bad VRRP checksum")
 	errInvalidIPv4Addr = errors.New("invalid IPv4 address")
