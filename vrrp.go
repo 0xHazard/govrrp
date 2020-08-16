@@ -16,23 +16,31 @@ package govrrp
 
 import (
 	"encoding/binary"
-
-	"log"
 )
 
 const (
-	advertisement = 1 // The only VRRP message type
-	vrrpVersion   = 3 // VRRP version
-	vrrpHdrSize   = 8 // Lenght of VRRP header, bytes
+	advertisement         = 1            // The only VRRP message type
+	vrrpVersion           = 3            // VRRP version
+	vrrpHdrSize           = 8            // Lenght of VRRP header, bytes
+	PseudoHeaderSize      = 12           // Size of pseudo-header, bytes
+	VRRPprotoNumber       = 112          // The IP protocol number assigned by the IANA
+	VRRPipv4MulticastAddr = "224.0.0.18" //The IP multicast address as assigned by the IANA
 )
 
 var (
 	MaxAdvertIntDefault = 100 // centiseconds (100 eq 1 sec)
 )
 
-var (
-	vrrpMessageLen int
-)
+type Marshaler interface {
+	Marshal() ([]byte, error)
+	Unmarshal([]byte) error
+}
+
+// VRRPpacket is a binary representation of VRRP packet
+type VRRPpacket struct {
+	PseudoHeader []byte
+	Header       []byte
+}
 
 // VRRPmessage represents a VRRP message.
 type VRRPmessage struct {
@@ -47,9 +55,18 @@ type VRRPmessage struct {
 	IPv4addresses [][]byte
 }
 
-func (m *VRRPmessage) Marshal() ([]byte, error) {
+// IPv4PseudoHeader  represents IPv4 pseudo-header
+type IPv4PseudoHeader struct {
+	Src      []byte
+	Dst      []byte
+	Zero     uint8
+	Protocol uint8
+	VRRPLen  int
+}
+
+func (m *VRRPmessage) Marshal() (VRRPpacket, error) {
 	if m == nil {
-		return nil, errNilHeader
+		return VRRPpacket{}, errNilHeader
 	}
 	b := make([]byte, vrrpHdrSize+(m.CountIPv4*4))
 
@@ -75,16 +92,13 @@ func (m *VRRPmessage) Marshal() ([]byte, error) {
 	// IP addresses
 	start := vrrpHdrSize
 	for _, addr := range m.IPv4addresses {
-		// TODO: move the check to AddIPaddresses()
-		if len(addr) > 4 || addr[0] == 0 {
-			log.Printf("%v: %d\n", errInvalidIPv4Addr, addr)
-			continue
-		}
 		copy(b[start:], addr)
 		start += 4
 	}
 
-	return b, nil
+	return VRRPpacket{
+		Header: b,
+	}, nil
 }
 
 func (m *VRRPmessage) Unmarshal(b []byte) error {
@@ -118,9 +132,43 @@ func (m *VRRPmessage) Unmarshal(b []byte) error {
 	m.Checksum = int(binary.BigEndian.Uint16(b[6:8]))
 
 	// IP addresses
-	// TODO...
+	ipAddrField := b[8:]
+	for ; len(ipAddrField) >= 4; ipAddrField = ipAddrField[4:] {
+		m.IPv4addresses = append(m.IPv4addresses, ipAddrField[0:4])
+	}
 
 	return nil
+}
+
+func (p *VRRPpacket) Marshal() ([]byte, error) {
+	return append(p.PseudoHeader, p.Header...), nil
+}
+
+func (p *VRRPpacket) AddPseudoHeader(phdr []byte) {
+	p.PseudoHeader = phdr
+}
+
+// SetChecksum writes provided checksum into Checksum field
+func (p *VRRPpacket) SetChecksum(chksum uint16) {
+	binary.BigEndian.PutUint16(p.Header[6:8], chksum)
+}
+
+//VerifyChecksum checks the checksum of incoming VRRP message according to rfc1071, returns True if the sum is valid, otherwise - false.
+func VerifyChecksum(src, dst []byte, packet []byte) (bool, error) {
+	// To calculate the checksum we need to add a pseudo-header as the original one was discarded.
+	phdr := IPv4PseudoHeader{
+		Src:      src,
+		Dst:      dst,
+		Protocol: VRRPprotoNumber,
+		VRRPLen:  len(packet),
+	}
+	pkg := phdr.Marshal()
+	pkg = append(pkg, packet...)
+	chksum := Checksum(pkg)
+	if chksum == uint16(0) {
+		return true, nil
+	}
+	return false, nil
 }
 
 // Checksum calculates VRRP message checksum
@@ -141,7 +189,22 @@ func Checksum(b []byte) uint16 {
 
 //AddIPaddresses appends provided slice of IP addresses to VRRPmessage struct
 func (m *VRRPmessage) AddIPaddresses(addresses [][]byte) error {
+	for _, addr := range addresses {
+		if len(addr) > 4 || addr[0] == 0 {
+			return errInvalidIPv4Addr
+		}
+	}
 	m.IPv4addresses = append(m.IPv4addresses, addresses...)
 	m.CountIPv4 = len(addresses)
 	return nil
+}
+
+func (hdr *IPv4PseudoHeader) Marshal() []byte {
+	var b = make([]byte, PseudoHeaderSize)
+	copy(b[0:4], hdr.Src)
+	copy(b[4:8], hdr.Dst)
+	b[8] = 0
+	b[9] = byte(hdr.Protocol)
+	binary.BigEndian.PutUint16(b[10:], uint16(hdr.VRRPLen))
+	return b
 }
