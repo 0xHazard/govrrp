@@ -190,7 +190,7 @@ func Checksum(b []byte) uint16 {
 //AddIPaddresses appends provided slice of IP addresses to VRRPmessage struct
 func (m *VRRPmessage) AddIPaddresses(addresses [][]byte) error {
 	for _, addr := range addresses {
-		if len(addr) > 4 || addr[0] == 0 {
+		if len(addr) > 4 || addr[0] == 0 || addr[3] == 0 {
 			return errInvalidIPv4Addr
 		}
 	}
