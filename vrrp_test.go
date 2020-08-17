@@ -1,6 +1,7 @@
 package govrrp
 
 import (
+	"bytes"
 	"testing"
 )
 
@@ -30,5 +31,34 @@ func TestAddIPaddresses(t *testing.T) {
 		} else {
 			t.Errorf("FAILED: %v\n", addr)
 		}
+	}
+}
+
+func TestMarshal(t *testing.T) {
+	testMessage := &VRRPmessage{
+		IPv4addresses: [][]byte{[]byte{172, 22, 2, 55}, []byte{192, 168, 3, 1}},
+		CountIPv4:     2,
+	}
+
+	packet, err := testMessage.Marshal()
+	if err != nil {
+		t.Errorf("FAILED: %v\n", err)
+	}
+
+	var testAddr []byte
+	for _, addr := range testMessage.IPv4addresses {
+		testAddr = append(testAddr, addr...)
+	}
+
+	if bytes.Equal(packet.Header[8:], testAddr) {
+		t.Logf("PASSED: %v\n", testMessage.IPv4addresses)
+	} else {
+		t.Errorf("FAILED: got %v; want %v\n", packet.Header[8:], testAddr)
+	}
+
+	if int(packet.Header[3]) == testMessage.CountIPv4 {
+		t.Logf("PASSED: %v\n", testMessage.CountIPv4)
+	} else {
+		t.Errorf("FAILED: got %d; want %d\n", packet.Header[3], testMessage.CountIPv4)
 	}
 }
