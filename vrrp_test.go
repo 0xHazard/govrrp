@@ -2,23 +2,24 @@ package govrrp
 
 import (
 	"bytes"
+	"net"
 	"testing"
 )
 
 func TestAddIPaddresses(t *testing.T) {
 
 	type addresses struct {
-		addr   [][]byte
+		addr   []net.IP
 		count  int
 		result bool
 	}
 
 	addrTable := []addresses{
-		addresses{[][]byte{[]byte{192, 168, 8, 99}, []byte{172, 23, 44, 6}}, 2, true},
-		addresses{[][]byte{[]byte{192, 168, 8, 0}, []byte{192, 168, 8, 6}}, 2, false},
-		addresses{[][]byte{[]byte{172, 22, 2, 55}, []byte{172, 22, 2, 2}, []byte{192, 168, 3, 1}, []byte{192, 160, 6, 56}}, 4, true},
-		addresses{[][]byte{[]byte{0, 168, 8, 99}}, 1, false},
-		addresses{[][]byte{[]byte{0, 0, 0, 0}}, 1, false},
+		{[]net.IP{net.IPv4(192, 168, 8, 99).To4(), net.IPv4(172, 23, 44, 6).To4()}, 2, true},
+		{[]net.IP{net.IPv4(192, 168, 8, 0).To4(), net.IPv4(192, 168, 8, 6).To4()}, 2, false},
+		{[]net.IP{net.IPv4(172, 22, 2, 55).To4(), net.IPv4(172, 22, 2, 2).To4(), net.IPv4(192, 168, 3, 1).To4(), net.IPv4(192, 160, 6, 56).To4()}, 4, true},
+		{[]net.IP{net.IPv4(0, 168, 8, 99).To4()}, 1, false},
+		{[]net.IP{net.IPv4(0, 0, 0, 0).To4()}, 1, false},
 	}
 
 	testMessage := &VRRPmessage{}
@@ -36,11 +37,11 @@ func TestAddIPaddresses(t *testing.T) {
 
 func TestMarshal(t *testing.T) {
 	testMessage := &VRRPmessage{
-		IPv4addresses: [][]byte{[]byte{172, 22, 2, 55}, []byte{192, 168, 3, 1}},
+		IPv4addresses: []net.IP{net.IPv4(172, 22, 2, 55).To4(), net.IPv4(192, 168, 3, 1).To4()},
 		CountIPv4:     2,
 	}
 
-	packet, err := testMessage.Marshal()
+	vrrpMsg, err := testMessage.Marshal()
 	if err != nil {
 		t.Errorf("FAILED: %v\n", err)
 	}
@@ -50,15 +51,15 @@ func TestMarshal(t *testing.T) {
 		testAddr = append(testAddr, addr...)
 	}
 
-	if bytes.Equal(packet.Header[8:], testAddr) {
+	if bytes.Equal(vrrpMsg[8:], testAddr) {
 		t.Logf("PASSED: %v\n", testMessage.IPv4addresses)
 	} else {
-		t.Errorf("FAILED: got %v; want %v\n", packet.Header[8:], testAddr)
+		t.Errorf("FAILED: got %v; want %v\n", vrrpMsg[8:], testAddr)
 	}
 
-	if int(packet.Header[3]) == testMessage.CountIPv4 {
+	if int(vrrpMsg[3]) == testMessage.CountIPv4 {
 		t.Logf("PASSED: %v\n", testMessage.CountIPv4)
 	} else {
-		t.Errorf("FAILED: got %d; want %d\n", packet.Header[3], testMessage.CountIPv4)
+		t.Errorf("FAILED: got %d; want %d\n", vrrpMsg[3], testMessage.CountIPv4)
 	}
 }
