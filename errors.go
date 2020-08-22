@@ -22,4 +22,6 @@ var (
 	errShortHeader     = errors.New("VRRP header is too short")
 	errBadChecksum     = errors.New("bad VRRP checksum")
 	errInvalidIPv4Addr = errors.New("invalid IPv4 address")
+	errIfNoIPv4addr    = errors.New("no IPv4 address assigned to the interface")
+	errIfNotFound      = errors.New("no suitable network interface found")
 )
