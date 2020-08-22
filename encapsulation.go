@@ -29,16 +29,18 @@ type IPv4packet struct {
 }
 
 // NewVRRPmulticastPacket is a factory that returns IPv4packet that should be used for multicast purposes
-func NewVRRPmulticastPacket(srcAddr net.IP, ifIdx int, vips []net.IP) (*IPv4packet, error) {
-	src := srcAddr.To4()
-	if src == nil {
-		return nil, errInvalidIPv4Addr
+func NewVRRPmulticastPacket(netif *net.Interface, vrid int, vips []net.IP) (*IPv4packet, error) {
+	// getting primary IP address of the provided interface
+	src, err := GetPrimaryIPv4addr(netif)
+	if err != nil {
+		return nil, err
 	}
+
 	// generating VRRP part of packet
 	vrrpMessage := &VRRPmessage{
 		Version:      vrrpVersion,
 		Type:         advertisement,
-		VirtRouterID: 1,
+		VirtRouterID: vrid,
 		Priority:     255,
 		CountIPv4:    0,
 		Rsvd:         0,
@@ -46,7 +48,11 @@ func NewVRRPmulticastPacket(srcAddr net.IP, ifIdx int, vips []net.IP) (*IPv4pack
 		Checksum:     0,
 	}
 
-	vrrpMessage.AddIPaddresses(vips)
+	err = vrrpMessage.AddIPaddresses(vips)
+	if err != nil {
+		return nil, err
+	}
+
 	vrrp, err := vrrpMessage.Marshal()
 	if err != nil {
 		return nil, err
@@ -79,8 +85,8 @@ func NewVRRPmulticastPacket(srcAddr net.IP, ifIdx int, vips []net.IP) (*IPv4pack
 	// And a control message
 	var cm *ipv4.ControlMessage
 	cm = &ipv4.ControlMessage{
-		Src:     srcAddr,
-		IfIndex: ifIdx}
+		Src:     src,
+		IfIndex: netif.Index}
 
 	return &IPv4packet{
 		ControlMessage: cm,
@@ -105,4 +111,33 @@ func (p *VRRPpacket) SetPseudoHeader(phdr []byte) {
 // SetChecksum writes provided checksum into Checksum field
 func (p *VRRPpacket) SetChecksum(chksum uint16) {
 	binary.BigEndian.PutUint16(p.Header[6:8], chksum)
+}
+
+// GetPrimaryIPv4addr returns primary IPv4 address of provided interface
+func GetPrimaryIPv4addr(netif *net.Interface) (net.IP, error) {
+	ifAddr, err := netif.Addrs()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, addr := range ifAddr {
+		if ipv4 := addr.(*net.IPNet).IP.To4(); ipv4 != nil {
+			return ipv4, nil
+		}
+	}
+	return nil, errIfNoIPv4addr
+}
+
+// GetInterface looks for the default network interface to use. The first match that is up and has Broadcast and Multicast flags will be returned.
+func GetInterface() (*net.Interface, error) {
+	ifs, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	for _, iface := range ifs {
+		if iface.Flags == net.FlagUp|net.FlagBroadcast|net.FlagMulticast {
+			return &iface, nil
+		}
+	}
+	return nil, errIfNotFound
 }
