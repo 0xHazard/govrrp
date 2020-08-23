@@ -28,6 +28,12 @@ type IPv4packet struct {
 	VRRPpacket     *VRRPpacket
 }
 
+// VRRPpacket is a binary representation of VRRP packet
+type VRRPpacket struct {
+	PseudoHeader []byte
+	Header       []byte
+}
+
 // NewVRRPmulticastPacket is a factory that returns IPv4packet that should be used for multicast purposes
 func NewVRRPmulticastPacket(netif *net.Interface, vrid int, vips []net.IP) (*IPv4packet, error) {
 	// getting primary IP address of the provided interface
@@ -88,6 +94,10 @@ func NewVRRPmulticastPacket(netif *net.Interface, vrid int, vips []net.IP) (*IPv
 		Src:     src,
 		IfIndex: netif.Index}
 
+	// Calculating checksum
+	chksum := Checksum(append(phdr, vrrp...))
+	binary.BigEndian.PutUint16(vrrp[6:8], chksum)
+
 	return &IPv4packet{
 		ControlMessage: cm,
 		IPv4header:     IPv4header,
@@ -98,9 +108,9 @@ func NewVRRPmulticastPacket(netif *net.Interface, vrid int, vips []net.IP) (*IPv
 	}, nil
 }
 
-// Marshal returns sseudo-header and VRRP message. That data is used for calculating the checksum
-func (p *VRRPpacket) Marshal() ([]byte, error) {
-	return append(p.PseudoHeader, p.Header...), nil
+// GetVRRPpacket returns pseudo-header and VRRP message. That data is used for calculating the checksum
+func (p *VRRPpacket) GetVRRPpacket() []byte {
+	return append(p.PseudoHeader, p.Header...)
 }
 
 // SetPseudoHeader adds provided custom pseudo-header
