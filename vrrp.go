@@ -25,7 +25,7 @@ const (
 	vrrpHdrSize           = 8            // Lenght of VRRP header, bytes
 	PseudoHeaderSize      = 12           // Size of pseudo-header, bytes
 	VRRPprotoNumber       = 112          // The IP protocol number assigned by the IANA
-	VRRPipv4MulticastAddr = "224.0.0.18" //The IP multicast address as assigned by the IANA
+	VRRPipv4MulticastAddr = "224.0.0.18" // The IP multicast address as assigned by the IANA
 )
 
 var (
@@ -35,12 +35,6 @@ var (
 type Marshaler interface {
 	Marshal() ([]byte, error)
 	Unmarshal([]byte) error
-}
-
-// VRRPpacket is a binary representation of VRRP packet
-type VRRPpacket struct {
-	PseudoHeader []byte
-	Header       []byte
 }
 
 // VRRPmessage represents a VRRP message.
