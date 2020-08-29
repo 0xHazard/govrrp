@@ -4,7 +4,7 @@
 This library implenents VRRPv3 according to rfc5798
 
 ## Installation
-Simply run `go get -u golang.org/x/net`
+Simply run `go get -u github.com/ep4eg/govrrp`
 
 ## Sender example
 ```go
