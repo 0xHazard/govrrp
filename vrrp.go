@@ -64,6 +64,8 @@ func (m *VRRPmessage) Marshal() ([]byte, error) {
 	if m == nil {
 		return nil, errNilHeader
 	}
+
+	m.CountIPv4 = len(m.IPv4addresses)
 	b := make([]byte, vrrpHdrSize+(m.CountIPv4*4))
 
 	// version | type fields
@@ -116,7 +118,6 @@ func (m *VRRPmessage) Unmarshal(b []byte) error {
 	m.Priority = int(b[2])
 
 	// IP addr count
-	b[3] = byte(m.CountIPv4)
 	m.CountIPv4 = int(b[3])
 
 	// rsvd | Max Adver Int
@@ -127,6 +128,7 @@ func (m *VRRPmessage) Unmarshal(b []byte) error {
 	m.Checksum = int(binary.BigEndian.Uint16(b[6:8]))
 
 	// IP addresses
+	m.IPv4addresses = nil
 	ipAddrField := b[8:]
 	for ; len(ipAddrField) >= 4; ipAddrField = ipAddrField[4:] {
 		m.IPv4addresses = append(m.IPv4addresses, ipAddrField[0:4])

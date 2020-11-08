@@ -64,6 +64,54 @@ func TestMarshal(t *testing.T) {
 	}
 }
 
+func TestUnmarshal(t *testing.T) {
+	const count = 2
+	testMessage := &VRRPmessage{
+		VirtRouterID:  3,
+		IPv4addresses: []net.IP{net.IPv4(172, 22, 2, 55).To4(), net.IPv4(192, 168, 3, 1).To4()},
+		CountIPv4:     count,
+	}
+
+	vrrpMsg, err := testMessage.Marshal()
+	if err != nil {
+		t.Errorf("FAILED: %v\n", err)
+	}
+
+	result := &VRRPmessage{}
+	if err = result.Unmarshal(vrrpMsg); err != nil {
+		t.Errorf("FAILED: couldn't unmarshal message: %v\n", err)
+	}
+
+	if result.VirtRouterID == testMessage.VirtRouterID && result.CountIPv4 == testMessage.CountIPv4 && len(result.IPv4addresses) == len(testMessage.IPv4addresses) {
+		for idx, addr := range result.IPv4addresses {
+			if !addr.Equal(testMessage.IPv4addresses[idx]) {
+				t.Errorf("FAILED: got:%v; want: %v\n", addr, testMessage.IPv4addresses[idx])
+				break
+			}
+		}
+		t.Logf("PASSED: Unmarshaling VRRP message\n")
+	} else {
+		t.Errorf("FAILED: got:%v; want: %v\n", result, testMessage)
+	}
+
+	// Testing non-empty &VRRPmessage{}
+	if err = result.Unmarshal(vrrpMsg); err != nil {
+		t.Errorf("FAILED: couldn't unmarshal message: %v\n", err)
+	}
+
+	if result.VirtRouterID == testMessage.VirtRouterID && result.CountIPv4 == testMessage.CountIPv4 && len(result.IPv4addresses) == len(testMessage.IPv4addresses) {
+		for idx, addr := range result.IPv4addresses {
+			if !addr.Equal(testMessage.IPv4addresses[idx]) {
+				t.Errorf("FAILED: got:%v; want: %v\n", addr, testMessage.IPv4addresses[idx])
+				break
+			}
+		}
+		t.Logf("PASSED: Unmarshaling VRRP message\n")
+	} else {
+		t.Errorf("FAILED: got:%v; want: %v\n", result, testMessage)
+	}
+}
+
 func TestChecksum(t *testing.T) {
 	type mcastPacket struct {
 		iface           *net.Interface
