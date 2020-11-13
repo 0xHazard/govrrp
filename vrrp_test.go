@@ -89,7 +89,7 @@ func TestUnmarshal(t *testing.T) {
 				break
 			}
 		}
-		t.Errorf("PASSED: Unmarshaling VRRP message\n")
+		t.Logf("PASSED: Unmarshaling VRRP message\n")
 	} else {
 		t.Errorf("FAILED: got:%v; want: %v\n", result, testMessage)
 	}
@@ -106,7 +106,7 @@ func TestUnmarshal(t *testing.T) {
 				break
 			}
 		}
-		t.Errorf("PASSED: Unmarshaling VRRP message\n")
+		t.Logf("PASSED: Unmarshaling VRRP message\n")
 	} else {
 		t.Errorf("FAILED: got:%v; want: %v\n", result, testMessage)
 	}
