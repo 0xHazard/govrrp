@@ -1,7 +1,6 @@
 package govrrp
 
 import (
-	"bytes"
 	"encoding/binary"
 	"net"
 	"testing"
@@ -11,174 +10,199 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-type packet struct {
-	name   string
-	header ipv4.Header
-	vrrp   VRRPmessage
-	expect bool
-}
-
-var srcAddr = net.IPv4(127, 0, 0, 1).To4()
-
 func TestAddIPaddresses(t *testing.T) {
-
 	type addresses struct {
-		addr   []net.IP
-		count  int
-		result bool
+		addr  []net.IP
+		count int
 	}
 
-	addrTable := []addresses{
-		{[]net.IP{net.IPv4(192, 168, 8, 99).To4(), net.IPv4(172, 23, 44, 6).To4()}, 2, true},
-		{[]net.IP{net.IPv4(192, 168, 8, 0).To4(), net.IPv4(192, 168, 8, 6).To4()}, 2, false},
-		{[]net.IP{net.IPv4(172, 22, 2, 55).To4(), net.IPv4(172, 22, 2, 2).To4(), net.IPv4(192, 168, 3, 1).To4(), net.IPv4(192, 160, 6, 56).To4()}, 4, true},
-		{[]net.IP{net.IPv4(0, 168, 8, 99).To4()}, 1, false},
-		{[]net.IP{net.IPv4(0, 0, 0, 0).To4()}, 1, false},
+	type table struct {
+		name   string
+		given  addresses
+		expect addresses
 	}
 
-	testMessage := &VRRPmessage{}
+	tests := []table{
+		{
+			name: "Valid case",
+			given: addresses{
+				[]net.IP{net.IPv4(192, 168, 8, 99).To4(), net.IPv4(172, 23, 44, 6).To4()},
+				2,
+			},
+			expect: addresses{
+				[]net.IP{net.IPv4(192, 168, 8, 99).To4(), net.IPv4(172, 23, 44, 6).To4()},
+				2,
+			},
+		},
+		{
+			name: "Subnet address",
+			given: addresses{
+				[]net.IP{net.IPv4(192, 168, 8, 0).To4(), net.IPv4(192, 168, 8, 6).To4()},
+				2,
+			},
+			expect: addresses{
+				nil,
+				0,
+			},
+		},
+		{
+			name: "Invalid IPv4 address",
+			given: addresses{
+				[]net.IP{net.IPv4(0, 168, 8, 99).To4()},
+				1,
+			},
+			expect: addresses{
+				nil,
+				0,
+			},
+		},
+		{
+			name: "Meta-address",
+			given: addresses{
+				[]net.IP{net.IPv4(0, 0, 0, 0).To4()},
+				1,
+			},
+			expect: addresses{
+				nil,
+				0,
+			},
+		},
+	}
 
-	for _, addr := range addrTable {
-		*testMessage = VRRPmessage{}
-		err := testMessage.AddIPaddresses(addr.addr)
-		if (err != nil && len(addr.addr) == addr.count && !addr.result) || (err == nil && (len(addr.addr) == addr.count) && addr.result) {
-			t.Logf("PASSED: %v\n", addr)
-		} else {
-			t.Errorf("FAILED: %v\n", addr)
-		}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := &VRRPmessage{}
+			err := result.AddIPaddresses(tc.given.addr)
+			if err != nil && err != errInvalidIPv4Addr {
+				t.Fatal(err)
+			}
+			assert.Equal(t, tc.expect.addr, result.IPv4addresses)
+			assert.Equal(t, tc.expect.count, result.CountIPv4)
+
+		})
 	}
 }
 
 func TestMarshal(t *testing.T) {
-	testMessage := &VRRPmessage{
-		IPv4addresses: []net.IP{net.IPv4(172, 22, 2, 55).To4(), net.IPv4(192, 168, 3, 1).To4()},
-		CountIPv4:     2,
+	tests := struct {
+		message VRRPmessage
+		given   []byte
+		expect  []byte
+	}{
+		VRRPmessage{
+			IPv4addresses: []net.IP{net.IPv4(172, 22, 2, 55).To4(), net.IPv4(192, 168, 3, 1).To4()},
+			CountIPv4:     2,
+		},
+		[]byte{},
+		[]byte{},
 	}
 
-	vrrpMsg, err := testMessage.Marshal()
-	if err != nil {
-		t.Errorf("FAILED: %v\n", err)
-	}
+	given, err := tests.message.Marshal()
+	require.NoError(t, err)
 
-	var testAddr []byte
-	for _, addr := range testMessage.IPv4addresses {
-		testAddr = append(testAddr, addr...)
+	for _, addr := range tests.message.IPv4addresses {
+		tests.expect = append(tests.expect, addr...)
 	}
-
-	if bytes.Equal(vrrpMsg[8:], testAddr) {
-		t.Logf("PASSED: %v\n", testMessage.IPv4addresses)
-	} else {
-		t.Errorf("FAILED: got %v; want %v\n", vrrpMsg[8:], testAddr)
-	}
-
-	if int(vrrpMsg[3]) == testMessage.CountIPv4 {
-		t.Logf("PASSED: got: %d, expect: %d\n", int(vrrpMsg[3]), testMessage.CountIPv4)
-	} else {
-		t.Errorf("FAILED: got %d; want %d\n", vrrpMsg[3], testMessage.CountIPv4)
-	}
+	// check only payload
+	assert.Equal(t, tests.expect, given[8:])
+	assert.Equal(t, tests.message.CountIPv4, int(given[3]))
 }
 
 func TestUnmarshal(t *testing.T) {
-	const count = 2
-	testMessage := &VRRPmessage{
-		VirtRouterID:  3,
-		IPv4addresses: []net.IP{net.IPv4(172, 22, 2, 55).To4(), net.IPv4(192, 168, 3, 1).To4()},
-		CountIPv4:     count,
+	tests := []struct {
+		name   string
+		given  VRRPmessage
+		expect VRRPmessage
+	}{
+		{
+			"Common functionality",
+			VRRPmessage{},
+			VRRPmessage{
+				Version:       3,
+				Type:          1,
+				VirtRouterID:  3,
+				IPv4addresses: []net.IP{net.IPv4(172, 22, 2, 55).To4(), net.IPv4(192, 168, 3, 1).To4()},
+				CountIPv4:     2,
+			},
+		},
+		{
+			"Non-empty structure",
+			VRRPmessage{
+				Version:       3,
+				Type:          1,
+				VirtRouterID:  3,
+				IPv4addresses: []net.IP{net.IPv4(172, 1, 1, 1).To4(), net.IPv4(192, 2, 2, 2).To4()},
+				CountIPv4:     2,
+			},
+			VRRPmessage{
+				Version:       3,
+				Type:          1,
+				VirtRouterID:  3,
+				IPv4addresses: []net.IP{net.IPv4(172, 22, 2, 55).To4(), net.IPv4(192, 168, 3, 1).To4()},
+				CountIPv4:     2,
+			},
+		},
 	}
 
-	vrrpMsg, err := testMessage.Marshal()
-	if err != nil {
-		t.Errorf("FAILED: %v\n", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			given, err := tt.expect.Marshal()
+			require.NoError(t, err)
 
-	result := &VRRPmessage{}
-	if err = result.Unmarshal(vrrpMsg); err != nil {
-		t.Errorf("FAILED: couldn't unmarshal message: %v\n", err)
-	}
+			err = tt.given.Unmarshal(given)
+			require.NoError(t, err)
 
-	if result.VirtRouterID == testMessage.VirtRouterID && result.CountIPv4 == testMessage.CountIPv4 && len(result.IPv4addresses) == len(testMessage.IPv4addresses) {
-		for idx, addr := range result.IPv4addresses {
-			if !addr.Equal(testMessage.IPv4addresses[idx]) {
-				t.Errorf("FAILED: got:%v; want: %v\n", addr, testMessage.IPv4addresses[idx])
-				break
-			}
-		}
-		t.Logf("PASSED: Unmarshaling VRRP message\n")
-	} else {
-		t.Errorf("FAILED: got:%v; want: %v\n", result, testMessage)
-	}
-
-	// Testing non-empty &VRRPmessage{}
-	if err = result.Unmarshal(vrrpMsg); err != nil {
-		t.Errorf("FAILED: couldn't unmarshal message: %v\n", err)
-	}
-
-	if result.VirtRouterID == testMessage.VirtRouterID && result.CountIPv4 == testMessage.CountIPv4 && len(result.IPv4addresses) == len(testMessage.IPv4addresses) {
-		for idx, addr := range result.IPv4addresses {
-			if !addr.Equal(testMessage.IPv4addresses[idx]) {
-				t.Errorf("FAILED: got:%v; want: %v\n", addr, testMessage.IPv4addresses[idx])
-				break
-			}
-		}
-		t.Logf("PASSED: Unmarshaling VRRP message\n")
-	} else {
-		t.Errorf("FAILED: got:%v; want: %v\n", result, testMessage)
+			assert.Equal(t, tt.expect, tt.given)
+		})
 	}
 }
 
 func TestChecksum(t *testing.T) {
-	type mcastPacket struct {
-		iface           *net.Interface
-		advertAddresses []net.IP
-		result          bool
-	}
-
 	iface, err := GetInterface()
-	if err != nil {
-		t.Fatalf("FAILED: %v\n", err)
-	}
+	require.NoError(t, err)
 
 	srcAddr, err := GetPrimaryIPv4addr(iface)
+	require.NoError(t, err)
 
-	if err != nil {
-		t.Fatalf("FAILED: %v\n", err)
+	tests := []struct {
+		name      string
+		iface     *net.Interface
+		addresses []net.IP
+		expect    bool
+	}{
+		{"Valid case", iface, []net.IP{net.IPv4(192, 168, 8, 99).To4(), net.IPv4(172, 23, 44, 6).To4()}, true},
+		{"IPv6 check", iface, []net.IP{net.ParseIP("ff02::114")}, false},
 	}
 
-	pcktTable := []mcastPacket{
-		{iface, []net.IP{net.IPv4(192, 168, 8, 99).To4(), net.IPv4(172, 23, 44, 6).To4()}, true},
-		{iface, []net.IP{net.ParseIP("ff02::114")}, false},
-	}
-
-	for _, tcase := range pcktTable {
-		packet, err := NewVRRPmulticastPacket(tcase.iface, 2, tcase.advertAddresses)
-		if err != nil {
-			if !tcase.result {
-				t.Logf("PASSED: %v\n", tcase)
-				continue
-			} else {
-				t.Fatalf("FAILED: %v\n", err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			packet, err := NewVRRPmulticastPacket(tc.iface, 2, tc.addresses)
+			if err != nil {
+				require.Equal(t, tc.expect, false)
+				return
 			}
-		}
 
-		pass, err := VerifyChecksum(srcAddr, net.ParseIP(VRRPipv4MulticastAddr).To4(), packet.VRRPpacket.Header)
-		if err != nil {
-			if !tcase.result {
-				t.Logf("PASSED: %v\n", tcase)
-				continue
-			} else {
-				t.Fatalf("FAILED: %v\n", err)
+			result, err := VerifyChecksum(srcAddr, net.ParseIP(VRRPipv4MulticastAddr).To4(), packet.VRRPpacket.Header)
+			if err != nil {
+				require.Equal(t, tc.expect, false)
 			}
-		}
-		if pass == tcase.result {
-			t.Logf("PASSED: %v\n", tcase)
-		} else {
-			t.Errorf("FAILED: %v\n", tcase)
-		}
+			require.Equal(t, tc.expect, result)
+
+		})
 	}
 }
 
 func TestValidate(t *testing.T) {
-	testCase := []packet{
+	type packet struct {
+		name   string
+		header ipv4.Header
+		vrrp   VRRPmessage
+		expect bool
+	}
+
+	var srcAddr = net.IPv4(127, 0, 0, 1).To4()
+
+	tests := []packet{
 		{
 			"Valid package",
 			ipv4.Header{
@@ -241,22 +265,31 @@ func TestValidate(t *testing.T) {
 		},
 	}
 
-	for _, tcase := range testCase {
-		t.Run(tcase.name, func(t *testing.T) {
-			payload, err := checksumHelper(srcAddr, tcase.vrrp)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			payload, err := checksumHelper(srcAddr, tc.vrrp)
 			require.NoError(t, err)
-			result, err := Validate(&tcase.header, payload)
+			result, err := Validate(&tc.header, payload)
 			if err != nil {
-				assert.Equal(t, tcase.expect, result)
+				assert.Equal(t, tc.expect, result)
 			}
-			assert.Equal(t, tcase.expect, result)
+			assert.Equal(t, tc.expect, result)
 
 		})
 	}
 }
 
 func BenchmarkValidate(b *testing.B) {
-	testData := packet{
+	type packet struct {
+		name   string
+		header ipv4.Header
+		vrrp   VRRPmessage
+		expect bool
+	}
+
+	var srcAddr = net.IPv4(127, 0, 0, 1).To4()
+
+	tests := packet{
 		"Valid bench test",
 		ipv4.Header{
 			Version:  ipv4.Version,
@@ -277,12 +310,12 @@ func BenchmarkValidate(b *testing.B) {
 		},
 		true,
 	}
-	payload, err := checksumHelper(srcAddr, testData.vrrp)
+	payload, err := checksumHelper(srcAddr, tests.vrrp)
 	if err != nil {
 		b.Fatal(err)
 	}
 	for i := 0; i < b.N; i++ {
-		Validate(&testData.header, payload)
+		Validate(&tests.header, payload)
 	}
 }
 
