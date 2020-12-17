@@ -17,11 +17,15 @@ package govrrp
 import "errors"
 
 var (
-	errNilHeader       = errors.New("VRRP header can't be empty")
-	errNilPseudoHdr    = errors.New("pseudo-header is empty")
-	errShortHeader     = errors.New("VRRP header is too short")
-	errBadChecksum     = errors.New("bad VRRP checksum")
-	errInvalidIPv4Addr = errors.New("invalid IPv4 address")
-	errIfNoIPv4addr    = errors.New("no IPv4 address assigned to the interface")
-	errIfNotFound      = errors.New("no suitable network interface found")
+	errIsNil              = errors.New("input is `nil`")
+	errNilHeader          = errors.New("VRRP header can't be empty")
+	errNilPseudoHdr       = errors.New("pseudo-header is empty")
+	errShortHeader        = errors.New("VRRP header is too short")
+	errBadChecksum        = errors.New("bad VRRP checksum")
+	errIfNoIPv4           = errors.New("IPv4 is supported only")
+	errInvalidIPv4Addr    = errors.New("invalid IPv4 address")
+	errIfNoIPv4addr       = errors.New("no IPv4 address assigned to the interface")
+	errIfNotFound         = errors.New("no suitable network interface found")
+	errInvalidVRRPversion = errors.New("invalid VRRP version")
+	errBadIPttl           = errors.New("bad IPv4 TTL")
 )

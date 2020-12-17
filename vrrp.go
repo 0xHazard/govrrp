@@ -16,7 +16,10 @@ package govrrp
 
 import (
 	"encoding/binary"
+	"fmt"
 	"net"
+
+	"golang.org/x/net/ipv4"
 )
 
 const (
@@ -31,11 +34,6 @@ const (
 var (
 	MaxAdvertIntDefault = 100 // centiseconds (100 eq 1 sec)
 )
-
-type Marshaler interface {
-	Marshal() ([]byte, error)
-	Unmarshal([]byte) error
-}
 
 // VRRPmessage represents a VRRP message.
 type VRRPmessage struct {
@@ -159,6 +157,29 @@ func VerifyChecksum(src, dst net.IP, packet []byte) (bool, error) {
 	return false, nil
 }
 
+//AddIPaddresses appends provided slice of IP addresses that will be advertised to VRRPmessage struct
+func (m *VRRPmessage) AddIPaddresses(addresses []net.IP) error {
+	for _, addr := range addresses {
+		if ipv4 := addr.To4(); ipv4 == nil || ipv4[0] == 0 || ipv4[3] == 0 {
+			return errInvalidIPv4Addr
+		}
+	}
+	m.IPv4addresses = append(m.IPv4addresses, addresses...)
+	m.CountIPv4 = len(addresses)
+	return nil
+}
+
+// Marshal converts IPv4PseudoHeader struct into it's binary representation that will be used in the packet
+func (hdr *IPv4PseudoHeader) Marshal() ([]byte, error) {
+	var b = make([]byte, PseudoHeaderSize)
+	copy(b[0:4], hdr.Src)
+	copy(b[4:8], hdr.Dst)
+	b[8] = 0
+	b[9] = byte(hdr.Protocol)
+	binary.BigEndian.PutUint16(b[10:], uint16(hdr.VRRPLen))
+	return b, nil
+}
+
 // Checksum calculates VRRP message checksum
 func Checksum(b []byte) uint16 {
 	var sum uint32
@@ -175,25 +196,32 @@ func Checksum(b []byte) uint16 {
 	return uint16(^sum)
 }
 
-//AddIPaddresses appends provided slice of IP addresses that will be advertised to VRRPmessage struct
-func (m *VRRPmessage) AddIPaddresses(addresses []net.IP) error {
-	for _, addr := range addresses {
-		if ipv4 := addr.To4(); ipv4 == nil || ipv4[0] == 0 || ipv4[3] == 0 {
-			return errInvalidIPv4Addr
-		}
+// Validate checks if the incoming packet should be accepted.
+func Validate(h *ipv4.Header, p []byte) (bool, error) {
+	if h == nil || p == nil {
+		return false, errIsNil
 	}
-	m.IPv4addresses = append(m.IPv4addresses, addresses...)
-	m.CountIPv4 = len(addresses)
-	return nil
-}
 
-// Marshal converts IPv4PseudoHeader struct to it's binary representation that will be used in the packet
-func (hdr *IPv4PseudoHeader) Marshal() ([]byte, error) {
-	var b = make([]byte, PseudoHeaderSize)
-	copy(b[0:4], hdr.Src)
-	copy(b[4:8], hdr.Dst)
-	b[8] = 0
-	b[9] = byte(hdr.Protocol)
-	binary.BigEndian.PutUint16(b[10:], uint16(hdr.VRRPLen))
-	return b, nil
+	if h.Version != 4 {
+		return false, errIfNoIPv4
+	}
+
+	// TTL should be equal to 255
+	if h.TTL != 255 {
+		return false, errBadIPttl
+	}
+
+	// Check VRRP version
+	if p[0] != byte(vrrpVersion<<4|advertisement) {
+		return false, errInvalidVRRPversion
+	}
+	valid, err := VerifyChecksum(h.Src, h.Dst, p)
+	if err != nil {
+		return false, fmt.Errorf("%s: %s", errBadChecksum, err)
+	}
+	if !valid {
+		return false, errBadChecksum
+	}
+
+	return true, nil
 }
