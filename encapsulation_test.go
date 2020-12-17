@@ -3,35 +3,35 @@ package govrrp
 import (
 	"net"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewVRRPmulticastPacket(t *testing.T) {
-	type mcastPacket struct {
-		iface           *net.Interface
-		advertAddresses []net.IP
-		result          bool
-	}
-
 	iface, err := GetInterface()
-	if err != nil {
-		t.Fatalf("FAILED: %v\n", err)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name      string
+		iface     *net.Interface
+		addresses []net.IP
+		expect    bool
+	}{
+		{"Valid case", iface, []net.IP{net.IPv4(192, 168, 8, 99).To4(), net.IPv4(172, 23, 44, 6).To4()}, true},
+		{"IPv6 check", iface, []net.IP{net.ParseIP("ff02::114")}, false},
 	}
 
-	pcktTable := []mcastPacket{
-		{iface, []net.IP{net.IPv4(192, 168, 8, 99), net.IPv4(172, 23, 44, 6)}, true},
-		{iface, []net.IP{net.ParseIP("ff02::114")}, false},
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewVRRPmulticastPacket(tc.iface, 2, tc.addresses)
+			if err != nil {
+				require.Equal(t, tc.expect, false)
+				return
+			}
+			// TODO ...
+			// just a placeholder for now
+			assert.Equal(t, tc.expect, true)
+		})
 	}
-
-	for _, tcase := range pcktTable {
-		_, err := NewVRRPmulticastPacket(tcase.iface, 2, tcase.advertAddresses)
-
-		// TODO ...
-		// just a placeholder for now
-		if (err != nil) || (err == nil && tcase.result) || (err == nil && !tcase.result) {
-			t.Logf("PASSED %v\n", tcase)
-		} else {
-			t.Errorf("FAILED Got: %v Expected %v; Error: %v\n", !tcase.result, tcase.result, err)
-		}
-	}
-
 }
