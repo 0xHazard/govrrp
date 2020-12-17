@@ -1,7 +1,7 @@
 # Lightweight VRRPv3 library
 [![CircleCI](https://circleci.com/gh/ep4eg/govrrp.svg?style=svg)](https://circleci.com/gh/ep4eg/govrrp)
 
-This library implenents VRRPv3 according to rfc5798
+This library implements VRRPv3 according to rfc5798
 
 ## Installation
 Simply run `go get -u github.com/ep4eg/govrrp`
