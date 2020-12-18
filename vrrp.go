@@ -137,6 +137,12 @@ func (m *VRRPmessage) Unmarshal(b []byte) error {
 
 //VerifyChecksum checks the checksum of incoming VRRP message according to rfc1071, returns True if the sum is valid, otherwise - false.
 func VerifyChecksum(src, dst net.IP, packet []byte) (bool, error) {
+	// src and dst IPs must be 4-byte slices, otherwise VerifyChecksum() fails
+	src = src.To4()
+	dst = dst.To4()
+	if src == nil || dst == nil {
+		return false, errInvalidIPv4Addr
+	}
 	// To calculate the checksum we need to add a pseudo-header as the original one was discarded.
 	phdr := &IPv4PseudoHeader{
 		Src:      src,
