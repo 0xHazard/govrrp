@@ -166,12 +166,17 @@ func TestChecksum(t *testing.T) {
 
 	tests := []struct {
 		name      string
+		src       net.IP
 		iface     *net.Interface
 		addresses []net.IP
 		expect    bool
 	}{
-		{"Valid case", iface, []net.IP{net.IPv4(192, 168, 8, 99).To4(), net.IPv4(172, 23, 44, 6).To4()}, true},
-		{"IPv6 check", iface, []net.IP{net.ParseIP("ff02::114")}, false},
+		{"Valid case",
+			srcAddr, iface, []net.IP{net.IPv4(192, 168, 8, 99).To4(), net.IPv4(172, 23, 44, 6).To4()}, true},
+		{"Non 4-byte src IP addr representation",
+			srcAddr.To16(), iface, []net.IP{net.IPv4(192, 168, 8, 99), net.IPv4(172, 23, 44, 6)}, true},
+		{"IPv6 check",
+			srcAddr, iface, []net.IP{net.ParseIP("ff02::114")}, false},
 	}
 
 	for _, tc := range tests {
@@ -182,9 +187,10 @@ func TestChecksum(t *testing.T) {
 				return
 			}
 
-			result, err := VerifyChecksum(srcAddr, net.ParseIP(VRRPipv4MulticastAddr).To4(), packet.VRRPpacket.Header)
+			result, err := VerifyChecksum(tc.src, net.ParseIP(VRRPipv4MulticastAddr).To4(), packet.VRRPpacket.Header)
 			if err != nil {
 				require.Equal(t, tc.expect, false)
+				return
 			}
 			require.Equal(t, tc.expect, result)
 
