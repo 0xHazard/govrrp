@@ -18,9 +18,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"time"
 
 	"golang.org/x/net/ipv4"
 )
+
+const Centisecond time.Duration = 10 * time.Millisecond
 
 const (
 	advertisement         = 1            // The only VRRP message type
@@ -224,4 +227,9 @@ func Validate(h *ipv4.Header, p []byte) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// Centiseconds returns the duration as an integer centiseconds count.
+func Centiseconds(d time.Duration) int64 {
+	return int64(d) / 1e7
 }
