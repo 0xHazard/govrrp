@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/ipv4"
 )
 
 func TestAddIPaddresses(t *testing.T) {
@@ -71,7 +70,7 @@ func TestAddIPaddresses(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := &VRRPmessage{}
+			result := &Message{}
 			err := result.AddIPaddresses(tc.given.addr)
 			if err != nil && err != errInvalidIPv4Addr {
 				t.Fatal(err)
@@ -83,13 +82,13 @@ func TestAddIPaddresses(t *testing.T) {
 	}
 }
 
-func TestMarshal(t *testing.T) {
+func TestMarshalVRRP(t *testing.T) {
 	tests := struct {
-		message VRRPmessage
+		message Message
 		given   []byte
 		expect  []byte
 	}{
-		VRRPmessage{
+		Message{
 			IPv4addresses: []net.IP{net.IPv4(172, 22, 2, 55).To4(), net.IPv4(192, 168, 3, 1).To4()},
 			CountIPv4:     2,
 		},
@@ -108,16 +107,16 @@ func TestMarshal(t *testing.T) {
 	assert.Equal(t, tests.message.CountIPv4, int(given[3]))
 }
 
-func TestUnmarshal(t *testing.T) {
+func TestUnmarshalVRRP(t *testing.T) {
 	tests := []struct {
 		name   string
-		given  VRRPmessage
-		expect VRRPmessage
+		given  Message
+		expect Message
 	}{
 		{
 			"Common functionality",
-			VRRPmessage{},
-			VRRPmessage{
+			Message{},
+			Message{
 				Version:       3,
 				Type:          1,
 				VirtRouterID:  3,
@@ -127,14 +126,14 @@ func TestUnmarshal(t *testing.T) {
 		},
 		{
 			"Non-empty structure",
-			VRRPmessage{
+			Message{
 				Version:       3,
 				Type:          1,
 				VirtRouterID:  3,
 				IPv4addresses: []net.IP{net.IPv4(172, 1, 1, 1).To4(), net.IPv4(192, 2, 2, 2).To4()},
 				CountIPv4:     2,
 			},
-			VRRPmessage{
+			Message{
 				Version:       3,
 				Type:          1,
 				VirtRouterID:  3,
@@ -181,13 +180,19 @@ func TestChecksum(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			packet, err := NewVRRPmulticastPacket(tc.iface, 2, tc.addresses)
+			packet, err := NewIPmulticastPacket(tc.iface, 2, tc.addresses)
 			if err != nil {
 				require.Equal(t, tc.expect, false)
 				return
 			}
 
-			result, err := VerifyChecksum(tc.src, net.ParseIP(VRRPipv4MulticastAddr).To4(), packet.VRRPpacket.Header)
+			_, vrrp, err := Decapsulate(packet)
+			if err != nil {
+				require.Equal(t, tc.expect, false)
+				return
+			}
+
+			result, err := VerifyChecksum(tc.src, McastGroup, vrrp)
 			if err != nil {
 				require.Equal(t, tc.expect, false)
 				return
@@ -201,8 +206,8 @@ func TestChecksum(t *testing.T) {
 func TestValidate(t *testing.T) {
 	type packet struct {
 		name   string
-		header ipv4.Header
-		vrrp   VRRPmessage
+		header IPv4header
+		vrrp   Message
 		expect bool
 	}
 
@@ -211,14 +216,14 @@ func TestValidate(t *testing.T) {
 	tests := []packet{
 		{
 			"Valid package",
-			ipv4.Header{
-				Version:  ipv4.Version,
+			IPv4header{
+				Version:  IPversion,
 				Src:      srcAddr,
 				TTL:      255,
-				Protocol: VRRPprotoNumber,
-				Dst:      net.ParseIP(VRRPipv4MulticastAddr).To4()},
-			VRRPmessage{
-				Version:       vrrpVersion,
+				Protocol: ProtoNumber,
+				Dst:      McastGroup},
+			Message{
+				Version:       version,
 				Type:          advertisement,
 				VirtRouterID:  2,
 				Priority:      255,
@@ -231,37 +236,37 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			"Not IPv4 packet",
-			ipv4.Header{
+			IPv4header{
 				Version:  6,
 				TTL:      255,
-				Protocol: VRRPprotoNumber,
-				Dst:      net.ParseIP(VRRPipv4MulticastAddr).To4()}, VRRPmessage{},
+				Protocol: ProtoNumber,
+				Dst:      McastGroup}, Message{},
 			false,
 		},
 		{
 			"TTL is not 255",
-			ipv4.Header{
-				Version:  ipv4.Version,
-				Protocol: VRRPprotoNumber,
-				Dst:      net.ParseIP(VRRPipv4MulticastAddr).To4()}, VRRPmessage{},
+			IPv4header{
+				Version:  IPversion,
+				Protocol: ProtoNumber,
+				Dst:      McastGroup}, Message{},
 			false,
 		},
 		{
 			"IP version is undefined",
-			ipv4.Header{
+			IPv4header{
 				TTL:      255,
-				Protocol: VRRPprotoNumber,
-				Dst:      net.ParseIP(VRRPipv4MulticastAddr).To4()}, VRRPmessage{},
+				Protocol: ProtoNumber,
+				Dst:      McastGroup}, Message{},
 			false,
 		},
 		{
 			"Unsupported VRRP version",
-			ipv4.Header{
-				Version:  ipv4.Version,
+			IPv4header{
+				Version:  IPversion,
 				TTL:      255,
-				Protocol: VRRPprotoNumber,
-				Dst:      net.ParseIP(VRRPipv4MulticastAddr).To4()},
-			VRRPmessage{
+				Protocol: ProtoNumber,
+				Dst:      McastGroup},
+			Message{
 				Version:      2,
 				Type:         advertisement,
 				VirtRouterID: 2,
@@ -288,8 +293,8 @@ func TestValidate(t *testing.T) {
 func BenchmarkValidate(b *testing.B) {
 	type packet struct {
 		name   string
-		header ipv4.Header
-		vrrp   VRRPmessage
+		header IPv4header
+		vrrp   Message
 		expect bool
 	}
 
@@ -297,14 +302,14 @@ func BenchmarkValidate(b *testing.B) {
 
 	tests := packet{
 		"Valid bench test",
-		ipv4.Header{
-			Version:  ipv4.Version,
+		IPv4header{
+			Version:  IPversion,
 			Src:      srcAddr,
 			TTL:      255,
-			Protocol: VRRPprotoNumber,
-			Dst:      net.ParseIP(VRRPipv4MulticastAddr).To4()},
-		VRRPmessage{
-			Version:       vrrpVersion,
+			Protocol: ProtoNumber,
+			Dst:      McastGroup},
+		Message{
+			Version:       version,
 			Type:          advertisement,
 			VirtRouterID:  2,
 			Priority:      255,
@@ -325,7 +330,7 @@ func BenchmarkValidate(b *testing.B) {
 	}
 }
 
-func checksumHelper(src net.IP, vrrp VRRPmessage) ([]byte, error) {
+func checksumHelper(src net.IP, vrrp Message) ([]byte, error) {
 	payload, err := vrrp.Marshal()
 	if err != nil {
 		return nil, err
@@ -334,8 +339,8 @@ func checksumHelper(src net.IP, vrrp VRRPmessage) ([]byte, error) {
 	// pseudo-header
 	pseudoHeader := &IPv4PseudoHeader{
 		Src:      src,
-		Dst:      net.ParseIP(VRRPipv4MulticastAddr).To4(),
-		Protocol: VRRPprotoNumber,
+		Dst:      McastGroup,
+		Protocol: ProtoNumber,
 		VRRPLen:  len(payload),
 	}
 
