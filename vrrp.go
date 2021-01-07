@@ -18,25 +18,27 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-
-	"golang.org/x/net/ipv4"
+	"time"
 )
 
+const Centisecond time.Duration = 10 * time.Millisecond
+
 const (
-	advertisement         = 1            // The only VRRP message type
-	vrrpVersion           = 3            // VRRP version
-	vrrpHdrSize           = 8            // Lenght of VRRP header, bytes
-	PseudoHeaderSize      = 12           // Size of pseudo-header, bytes
-	VRRPprotoNumber       = 112          // The IP protocol number assigned by the IANA
-	VRRPipv4MulticastAddr = "224.0.0.18" // The IP multicast address as assigned by the IANA
+	advertisement    = 1   // The only VRRP message type
+	version          = 3   // VRRP version
+	hdrSize          = 8   // Lenght of VRRP header, bytes
+	PseudoHeaderSize = 12  // Size of pseudo-header, bytes
+	ProtoNumber      = 112 // The IP protocol number assigned by the IANA
+	// VRRPipv4MulticastAddr = "224.0.0.18"
 )
 
 var (
-	MaxAdvertIntDefault = 100 // centiseconds (100 eq 1 sec)
+	MaxAdvertIntDefault = 100                           // centiseconds (100 eq 1 sec)
+	McastGroup          = net.IPv4(224, 0, 0, 18).To4() // The IP multicast address as assigned by the IANA
 )
 
-// VRRPmessage represents a VRRP message.
-type VRRPmessage struct {
+// Message represents a VRRP message.
+type Message struct {
 	Version       int
 	Type          int
 	VirtRouterID  int
@@ -57,17 +59,17 @@ type IPv4PseudoHeader struct {
 	VRRPLen  int
 }
 
-// Marshal converts VRRPmessage struct to it's binary representation that will be used in the packet
-func (m *VRRPmessage) Marshal() ([]byte, error) {
+// Marshal converts Message struct to it's binary representation that will be used in the packet
+func (m *Message) Marshal() ([]byte, error) {
 	if m == nil {
 		return nil, errNilHeader
 	}
 
 	m.CountIPv4 = len(m.IPv4addresses)
-	b := make([]byte, vrrpHdrSize+(m.CountIPv4*4))
+	b := make([]byte, hdrSize+(m.CountIPv4*4))
 
 	// version | type fields
-	b[0] = byte(vrrpVersion<<4 | advertisement)
+	b[0] = byte(version<<4 | advertisement)
 
 	// VRID
 	b[1] = byte(m.VirtRouterID)
@@ -86,7 +88,7 @@ func (m *VRRPmessage) Marshal() ([]byte, error) {
 	binary.BigEndian.PutUint16(b[6:8], uint16(m.Checksum))
 
 	// IP addresses
-	start := vrrpHdrSize
+	start := hdrSize
 	for _, addr := range m.IPv4addresses {
 		copy(b[start:], addr.To4())
 		start += 4
@@ -95,13 +97,13 @@ func (m *VRRPmessage) Marshal() ([]byte, error) {
 	return b, nil
 }
 
-// Unmarshal reads a binary representation of VRRP message and fills up VRRPmessage structure that's provided as a receiver
-func (m *VRRPmessage) Unmarshal(b []byte) error {
-	if b == nil {
+// Unmarshal reads a binary representation of VRRP message and fills up Message structure that's provided as a receiver
+func (m *Message) Unmarshal(b []byte) error {
+	if b == nil || m == nil {
 		return errNilHeader
 	}
 
-	if len(b) < vrrpHdrSize {
+	if len(b) < hdrSize {
 		return errShortHeader
 	}
 
@@ -136,7 +138,7 @@ func (m *VRRPmessage) Unmarshal(b []byte) error {
 }
 
 //VerifyChecksum checks the checksum of incoming VRRP message according to rfc1071, returns True if the sum is valid, otherwise - false.
-func VerifyChecksum(src, dst net.IP, packet []byte) (bool, error) {
+func VerifyChecksum(src, dst net.IP, vrrp []byte) (bool, error) {
 	// src and dst IPs must be 4-byte slices, otherwise VerifyChecksum() fails
 	src = src.To4()
 	dst = dst.To4()
@@ -147,15 +149,15 @@ func VerifyChecksum(src, dst net.IP, packet []byte) (bool, error) {
 	phdr := &IPv4PseudoHeader{
 		Src:      src,
 		Dst:      dst,
-		Protocol: VRRPprotoNumber,
-		VRRPLen:  len(packet),
+		Protocol: ProtoNumber,
+		VRRPLen:  len(vrrp),
 	}
 	pkg, err := phdr.Marshal()
 	if err != nil {
 		return false, err
 	}
 
-	pkg = append(pkg, packet...)
+	pkg = append(pkg, vrrp...)
 	chksum := Checksum(pkg)
 	if chksum == uint16(0) {
 		return true, nil
@@ -163,8 +165,8 @@ func VerifyChecksum(src, dst net.IP, packet []byte) (bool, error) {
 	return false, nil
 }
 
-//AddIPaddresses appends provided slice of IP addresses that will be advertised to VRRPmessage struct
-func (m *VRRPmessage) AddIPaddresses(addresses []net.IP) error {
+//AddIPaddresses appends provided slice of IP addresses that will be advertised to Message struct
+func (m *Message) AddIPaddresses(addresses []net.IP) error {
 	for _, addr := range addresses {
 		if ipv4 := addr.To4(); ipv4 == nil || ipv4[0] == 0 || ipv4[3] == 0 {
 			return errInvalidIPv4Addr
@@ -186,7 +188,7 @@ func (hdr *IPv4PseudoHeader) Marshal() ([]byte, error) {
 	return b, nil
 }
 
-// Checksum calculates VRRP message checksum
+// Checksum calculates checksum of provided VRRP message.
 func Checksum(b []byte) uint16 {
 	var sum uint32
 	for ; len(b) >= 2; b = b[2:] {
@@ -203,7 +205,7 @@ func Checksum(b []byte) uint16 {
 }
 
 // Validate checks if the incoming packet should be accepted.
-func Validate(h *ipv4.Header, p []byte) (bool, error) {
+func Validate(h *IPv4header, p []byte) (bool, error) {
 	if h == nil || p == nil {
 		return false, errIsNil
 	}
@@ -218,7 +220,7 @@ func Validate(h *ipv4.Header, p []byte) (bool, error) {
 	}
 
 	// Check VRRP version
-	if p[0] != byte(vrrpVersion<<4|advertisement) {
+	if p[0] != byte(version<<4|advertisement) {
 		return false, errInvalidVRRPversion
 	}
 	valid, err := VerifyChecksum(h.Src, h.Dst, p)
@@ -230,4 +232,57 @@ func Validate(h *ipv4.Header, p []byte) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// Centiseconds returns the duration as an integer centiseconds count.
+func Centiseconds(d time.Duration) int64 {
+	return int64(d) / 1e7
+}
+
+// NewVRRPpacket is a factory that returns VRRP message
+// with calculated checksum. Can be used for either multicast or unicast.
+func NewVRRPpacket(src, dst net.IP, vrid int, vips []net.IP) ([]byte, error) {
+
+	if src == nil || dst == nil {
+		return nil, errIsNil
+	}
+
+	msg := &Message{
+		Version:      version,
+		Type:         advertisement,
+		VirtRouterID: vrid,
+		Priority:     255,
+		CountIPv4:    0,
+		Rsvd:         0,
+		MaxAdvertInt: MaxAdvertIntDefault,
+		Checksum:     0,
+	}
+
+	err := msg.AddIPaddresses(vips)
+	if err != nil {
+		return nil, err
+	}
+
+	vrrp, err := msg.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	pseudoHeader := &IPv4PseudoHeader{
+		Src:      src.To4(),
+		Dst:      dst.To4(),
+		Protocol: ProtoNumber,
+		VRRPLen:  len(vrrp),
+	}
+
+	phdr, err := pseudoHeader.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculating checksum
+	chksum := Checksum(append(phdr, vrrp...))
+	binary.BigEndian.PutUint16(vrrp[6:8], chksum)
+
+	return vrrp, nil
 }

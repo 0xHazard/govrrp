@@ -28,4 +28,5 @@ var (
 	errIfNotFound         = errors.New("no suitable network interface found")
 	errInvalidVRRPversion = errors.New("invalid VRRP version")
 	errBadIPttl           = errors.New("bad IPv4 TTL")
+	errBadIPheader        = errors.New("bad IPv4 header")
 )

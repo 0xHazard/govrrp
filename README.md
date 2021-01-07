@@ -1,99 +1,89 @@
 # Lightweight VRRPv3 library
 [![CircleCI](https://circleci.com/gh/ep4eg/govrrp.svg?style=svg)](https://circleci.com/gh/ep4eg/govrrp)
 
-This library implements VRRPv3 according to rfc5798
+This library implements VRRPv3 in accordance with rfc5798
 
 ## Installation
 Simply run `go get -u github.com/ep4eg/govrrp`
 
-## Sender example
+## Example
+#### connection
 ```go
-    ...
-    multicastGroup := &net.IPAddr{IP: net.ParseIP(govrrp.VRRPipv4MulticastAddr)}
-    advertAddresses := []net.IP{net.IPv4(192, 165, 55, 55), net.IPv4(192, 165, 44, 33)}
+	...
+	// IP addresses we want to advertise
+	advertAddresses := []net.IP{
+		net.IPv4(192, 165, 55, 55),
+		net.IPv4(192, 165, 44, 33),
+	}
 
-    // Getting default network interface and its IP address. You can define these manually.
-    iface, err := govrrp.GetInterface()
-    if err != nil {
-        // Error handling
-    }
+	// Get default network interface and its IP address. You can define these manually.
+	iface, err := govrrp.GetInterface()
+	if err != nil {
+		// Error handling
+	}
 
-    localIPaddr, err := govrrp.GetPrimaryIPv4addr(iface)
-    if err != nil {
-        // Error handling
-    }
+	localIPaddr, err := govrrp.GetPrimaryIPv4addr(iface)
+	if err != nil {
+		// Error handling
+	}
 
-    // Creating a socket and joining the multicast group.
-    c, err := net.ListenPacket("ip4:112", localIPaddr.String())
-    if err != nil {
-        log.Fatal(err)
-    }
-    r, err := ipv4.NewRawConn(c)
-    if err != nil {
-        // Error handling
-    }
+	multicastGroup := &net.IPAddr{IP: govrrp.McastGroup}
 
-    if err := r.JoinGroup(iface, multicastGroup); err != nil {
-        // Error handling
-    }
+	// Create socket and listen multicast
+	c, err := net.ListenPacket("ip4:"+strconv.Itoa(govrrp.ProtoNumber), multicastGroup.String())
+	if err != nil {
+		// Error handling
+	}
 
-    defer func() {
-        r.LeaveGroup(iface, multicastGroup)
-        r.Close()
-    }()
-    ...
+	// Join multicast group. x/net/ipv4 used for simplicity, the same can be implemented with raw sockets.
+	p := ipv4.NewPacketConn(c)
+	if err != nil {
+		// Error handling
+	}
 
-    // Generating VRRP message.
-    packet, err := govrrp.NewVRRPmulticastPacket(iface, 1, advertAddresses)
-    if err != nil {
-        // Error handling
-    }
+	if err := p.JoinGroup(iface, multicastGroup); err != nil {
+		// Error handling
+	}
 
-    // Writing the entire packet to the socket
-    if err := r.WriteTo(packet.IPv4header, packet.VRRPpacket.Header, packet.ControlMessage); err != nil {
-        // Error handling
-    }
-    ...
+	defer func() {
+		p.LeaveGroup(iface, multicastGroup)
+		p.Close()
+	}()
+	...
 ```
 
-## Reciever example
+#### Sender
 ```go
-    multicastGroup := &net.IPAddr{IP: net.ParseIP(govrrp.VRRPipv4MulticastAddr)}
+	...
+	// Craft VRRP packet
+	packet, err := govrrp.NewVRRPpacket(localIPaddr, govrrp.McastGroup, 3, advertAddresses)
+	if err != nil {
+		// Error handling
+	}
 
-    // Getting default network interface.
-    iface, err := govrrp.GetInterface()
-    if err != nil {
-        // Error handling
-    }
-
-    // Creating a socket and joining the multicast group.
-    c, err := net.ListenPacket("ip4:112", govrrp.VRRPipv4MulticastAddr)
-    if err != nil {
-        // Error handling
-    }
-    r, err := ipv4.NewRawConn(c)
-    if err != nil {
-        // Error handling
-    }
-        defer func() {
-        r.LeaveGroup(iface, multicastGroup)
-        r.Close()
-    }()
-    ...
-
-        b := make([]byte, 1500)
-    for {
-        r.SetControlMessage(ipv4.FlagDst, true)
-        packet, vrrp, cm, err := r.ReadFrom(b)
-        if err != nil {
-            // Error handling
-        }
-
-        vrrpMessage := govrrp.VRRPmessage{}
-        vrrpMessage.Unmarshal(vrrp)
-        ...
-
-        fmt.Printf("%v\n", cm)
-        fmt.Printf("%v\n", vrrpMessage)
-    }
+	for i := 0; i < 10; i++ {
+		// Write the packet to socket
+		if _, err := p.WriteTo(packet, nil, multicastGroup); err != nil {
+			panic(err)
+		}
+		time.Sleep(1 * time.Second)
+	}
+	...
+    
+```
+#### Reciever
+```go
+	...
+	for {
+		// Writing the entire packet to the socket
+		buf := make([]byte, 1500)
+		rLen, _, _, err := p.ReadFrom(buf)
+		if err != nil {
+			panic(err)
+		}
+		msg := govrrp.Message{}
+		msg.Unmarshal(buf[:rLen])
+		fmt.Printf("Advertised IP addresses: %v\n", msg.IPv4addresses)
+	}
+	...
 ```
