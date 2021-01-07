@@ -185,7 +185,6 @@ func TestChecksum(t *testing.T) {
 				require.Equal(t, tc.expect, false)
 				return
 			}
-
 			_, vrrp, err := Decapsulate(packet)
 			if err != nil {
 				require.Equal(t, tc.expect, false)
