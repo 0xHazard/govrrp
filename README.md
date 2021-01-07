@@ -9,8 +9,8 @@ Simply run `go get -u github.com/ep4eg/govrrp`
 ## Example
 #### connection
 ```go
-    ...
-    // IP addresses we want to advertise
+	...
+	// IP addresses we want to advertise
 	advertAddresses := []net.IP{
 		net.IPv4(192, 165, 55, 55),
 		net.IPv4(192, 165, 44, 33),
@@ -49,11 +49,12 @@ Simply run `go get -u github.com/ep4eg/govrrp`
 		p.LeaveGroup(iface, multicastGroup)
 		p.Close()
 	}()
-    ...
+	...
 ```
 
 #### Sender
 ```go
+	...
 	// Craft VRRP packet
 	packet, err := govrrp.NewVRRPpacket(localIPaddr, govrrp.McastGroup, 3, advertAddresses)
 	if err != nil {
@@ -66,11 +67,13 @@ Simply run `go get -u github.com/ep4eg/govrrp`
 			panic(err)
 		}
 		time.Sleep(1 * time.Second)
-    }
+	}
+	...
     
 ```
 #### Reciever
 ```go
+	...
 	for {
 		// Writing the entire packet to the socket
 		buf := make([]byte, 1500)
@@ -82,4 +85,5 @@ Simply run `go get -u github.com/ep4eg/govrrp`
 		msg.Unmarshal(buf[:rLen])
 		fmt.Printf("Advertised IP addresses: %v\n", msg.IPv4addresses)
 	}
+	...
 ```
