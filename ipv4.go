@@ -72,10 +72,6 @@ func (h *IPv4header) Unmarshal(b []byte) error {
 		return errNilHeader
 	}
 
-	if len(b) < hdrSize {
-		return errShortHeader
-	}
-
 	hdrlen := int(b[0]&0x0f) << 2
 	if len(b) < hdrlen {
 		return errBadIPheader
