@@ -75,7 +75,7 @@ Simply run `go get -u github.com/ep4eg/govrrp`
 ```go
 	...
 	for {
-		// Writing the entire packet to the socket
+		// Read from socket
 		buf := make([]byte, 1500)
 		rLen, _, _, err := p.ReadFrom(buf)
 		if err != nil {
