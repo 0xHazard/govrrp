@@ -103,7 +103,7 @@ func (h *IPv4header) Unmarshal(b []byte) error {
 }
 
 // NewIPmulticastPacket is a factory that returns IPv4 packet containing VRRP message as payload that should be used for multicast purpose
-func NewIPmulticastPacket(netif *net.Interface, vrid int, vips []net.IP) ([]byte, error) {
+func NewIPmulticastPacket(netif *net.Interface, vrid, priority int, vips []net.IP) ([]byte, error) {
 	// getting primary IP address of the provided interface
 	src, err := GetPrimaryIPv4addr(netif)
 	if err != nil {
@@ -115,7 +115,7 @@ func NewIPmulticastPacket(netif *net.Interface, vrid int, vips []net.IP) ([]byte
 		Version:      version,
 		Type:         advertisement,
 		VirtRouterID: vrid,
-		Priority:     255,
+		Priority:     priority,
 		CountIPv4:    0,
 		Rsvd:         0,
 		MaxAdvertInt: MaxAdvertIntDefault,

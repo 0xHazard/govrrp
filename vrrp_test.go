@@ -180,7 +180,7 @@ func TestChecksum(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			packet, err := NewIPmulticastPacket(tc.iface, 2, tc.addresses)
+			packet, err := NewIPmulticastPacket(tc.iface, 2, 255, tc.addresses)
 			if err != nil {
 				require.Equal(t, tc.expect, false)
 				return
