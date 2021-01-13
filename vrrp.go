@@ -241,7 +241,7 @@ func Centiseconds(d time.Duration) int64 {
 
 // NewVRRPpacket is a factory that returns VRRP message
 // with calculated checksum. Can be used for either multicast or unicast.
-func NewVRRPpacket(src, dst net.IP, vrid int, vips []net.IP) ([]byte, error) {
+func NewVRRPpacket(src, dst net.IP, vrid, priority int, vips []net.IP) ([]byte, error) {
 
 	if src == nil || dst == nil {
 		return nil, errIsNil
@@ -251,7 +251,7 @@ func NewVRRPpacket(src, dst net.IP, vrid int, vips []net.IP) ([]byte, error) {
 		Version:      version,
 		Type:         advertisement,
 		VirtRouterID: vrid,
-		Priority:     255,
+		Priority:     priority,
 		CountIPv4:    0,
 		Rsvd:         0,
 		MaxAdvertInt: MaxAdvertIntDefault,
