@@ -56,7 +56,7 @@ Simply run `go get -u github.com/ep4eg/govrrp`
 ```go
 	...
 	// Craft VRRP packet
-	packet, err := govrrp.NewVRRPpacket(localIPaddr, govrrp.McastGroup, 3, advertAddresses)
+	packet, err := govrrp.NewVRRPpacket(localIPaddr, govrrp.McastGroup, 3, 255, advertAddresses)
 	if err != nil {
 		// Error handling
 	}
